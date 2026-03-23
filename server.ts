@@ -26,10 +26,76 @@ async function startServer() {
   // Mock Database for records and logs
   const recordsDb: any[] = [];
   const accessLogs: any[] = [];
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+  const doctorsDb: any[] = [
+    { id: 'd1', name: 'Dr. Smith', pin: '123456', addedAt: new Date().toLocaleString(), pinExpiry: Date.now() + THIRTY_DAYS },
+    { id: 'd2', name: 'Dr. Wong', pin: '123456', addedAt: new Date().toLocaleString(), pinExpiry: Date.now() + THIRTY_DAYS }
+  ];
 
   app.use(express.json());
 
   // API Routes
+  app.get('/api/doctors', (req: Request, res: Response) => {
+    const { role } = req.query;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    res.json(doctorsDb);
+  });
+
+  app.post('/api/doctors', (req: Request, res: Response) => {
+    const { role, name, pin } = req.body;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    if (!name || !pin) return res.status(400).json({ error: 'Name and PIN required' });
+    
+    const newDoctor = {
+      id: 'd' + Math.random().toString(36).substr(2, 9),
+      name,
+      pin,
+      addedAt: new Date().toLocaleString(),
+      pinExpiry: Date.now() + THIRTY_DAYS
+    };
+    doctorsDb.push(newDoctor);
+    res.json({ success: true, doctor: newDoctor });
+  });
+
+  app.delete('/api/doctors/:id', (req: Request, res: Response) => {
+    const { role } = req.query;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    
+    const index = doctorsDb.findIndex(d => d.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: 'Doctor not found' });
+    
+    doctorsDb.splice(index, 1);
+    res.json({ success: true });
+  });
+
+  app.post('/api/doctors/:id/reset-pin', (req: Request, res: Response) => {
+    const { role, newPin } = req.body;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    if (!newPin) return res.status(400).json({ error: 'New PIN required' });
+    
+    const doctor = doctorsDb.find(d => d.id === req.params.id);
+    if (!doctor) return res.status(404).json({ error: 'Doctor not found' });
+    
+    doctor.pin = newPin;
+    doctor.pinExpiry = Date.now() + THIRTY_DAYS;
+    res.json({ success: true, doctor });
+  });
+
+  app.post('/api/verify-doctor', (req: Request, res: Response) => {
+    const { userId, pin } = req.body;
+    if (!userId || !pin) return res.status(400).json({ error: 'User ID and PIN required' });
+
+    const doctor = doctorsDb.find(d => d.id === userId);
+    if (!doctor || doctor.pin !== pin) {
+      return res.status(401).json({ error: 'Invalid Doctor Authorization PIN' });
+    }
+    
+    if (Date.now() > doctor.pinExpiry) {
+      return res.status(401).json({ error: 'Doctor PIN has expired. Please contact an administrator to reset it.' });
+    }
+
+    res.json({ success: true });
+  });
   app.get('/api/records', (req: Request, res: Response) => {
     const { role, userId } = req.query;
     if (role === 'admin' || role === 'doctor') {
@@ -97,6 +163,7 @@ async function startServer() {
       };
       recordsDb.push(newRecord);
 
+      console.log('Sending successful response for /api/encrypt');
       res.json({
         success: true,
         record: newRecord,
@@ -104,7 +171,7 @@ async function startServer() {
         message: 'SVG encrypted using multimodal biometrics'
       });
     } catch (error) {
-      console.error(error);
+      console.error('Error in /api/encrypt:', error);
       res.status(500).json({ error: 'Encryption failed' });
     }
   });
@@ -126,8 +193,14 @@ async function startServer() {
       }
 
       // Additional Doctor Verification
-      if (role === 'doctor' && doctorPin !== '123456') {
-        return res.status(401).json({ error: 'Invalid Doctor Authorization PIN' });
+      if (role === 'doctor') {
+        const doctor = doctorsDb.find(d => d.id === userId);
+        if (!doctor || doctor.pin !== doctorPin) {
+          return res.status(401).json({ error: 'Invalid Doctor Authorization PIN' });
+        }
+        if (Date.now() > doctor.pinExpiry) {
+          return res.status(401).json({ error: 'Doctor PIN has expired. Please contact an administrator to reset it.' });
+        }
       }
 
       if (!files.face || !files.iris) {
@@ -210,6 +283,21 @@ async function startServer() {
     }
   });
 
+  // Global error handler to ensure JSON responses for API errors
+  app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
+    console.error('Global error:', err);
+    if (req.path.startsWith('/api/')) {
+      res.status(500).json({ error: err.message || 'Internal Server Error' });
+    } else {
+      next(err);
+    }
+  });
+
+  // 404 handler for API routes
+  app.use('/api', (req: Request, res: Response) => {
+    res.status(404).json({ error: 'API endpoint not found' });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -224,16 +312,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
-
-  // Global error handler to ensure JSON responses for API errors
-  app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
-    console.error('Global error:', err);
-    if (req.path.startsWith('/api/')) {
-      res.status(500).json({ error: err.message || 'Internal Server Error' });
-    } else {
-      next(err);
-    }
-  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);

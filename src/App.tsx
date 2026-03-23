@@ -52,9 +52,16 @@ const MOCK_USERS: User[] = [
 ];
 
 export default function App() {
+  const [users, setUsers] = useState<User[]>(MOCK_USERS);
   const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0]);
   const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [showDoctorManagement, setShowDoctorManagement] = useState(false);
+  const [doctorsList, setDoctorsList] = useState<any[]>([]);
+  const [newDoctorName, setNewDoctorName] = useState('');
+  const [newDoctorPin, setNewDoctorPin] = useState('');
+  const [resettingPinId, setResettingPinId] = useState<string | null>(null);
+  const [resetPinValue, setResetPinValue] = useState('');
   const [emergencyReason, setEmergencyReason] = useState('');
   const [isEmergencyLoading, setIsEmergencyLoading] = useState(false);
 
@@ -105,8 +112,107 @@ export default function App() {
     fetchRecords();
     if (currentUser.role === 'admin') {
       fetchLogs();
+      fetchDoctors();
     }
   }, [currentUser]);
+
+  const fetchDoctors = async () => {
+    try {
+      const response = await fetch(`/api/doctors?role=${currentUser.role}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : [];
+      
+      const baseUsers = MOCK_USERS.filter(u => u.role !== 'doctor');
+      const fetchedDoctors = data.map((d: any) => ({ id: d.id, name: d.name, role: 'doctor' }));
+      setUsers([...baseUsers, ...fetchedDoctors]);
+      setDoctorsList(data);
+    } catch (error) {
+      console.error('Failed to fetch doctors', error);
+    }
+  };
+
+  const handleAddDoctor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDoctorName || !newDoctorPin) return;
+    try {
+      const response = await fetch('/api/doctors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: currentUser.role, name: newDoctorName, pin: newDoctorPin })
+      });
+      if (response.ok) {
+        setNewDoctorName('');
+        setNewDoctorPin('');
+        fetchDoctors();
+        setStatus({ type: 'success', message: 'Doctor added successfully' });
+      } else {
+        let data;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { error: `Server returned an invalid response (${response.status}).` };
+        }
+        setStatus({ type: 'error', message: data.error || 'Failed to add doctor' });
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Network error' });
+    }
+  };
+
+  const handleRemoveDoctor = async (id: string) => {
+    try {
+      const response = await fetch(`/api/doctors/${id}?role=${currentUser.role}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchDoctors();
+        setStatus({ type: 'success', message: 'Doctor removed successfully' });
+      } else {
+        let data;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { error: `Server returned an invalid response (${response.status}).` };
+        }
+        setStatus({ type: 'error', message: data.error || 'Failed to remove doctor' });
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Network error' });
+    }
+  };
+
+  const handleResetPin = async (id: string, newPin: string) => {
+    if (!newPin) return;
+    
+    try {
+      const response = await fetch(`/api/doctors/${id}/reset-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: currentUser.role, newPin })
+      });
+      
+      if (response.ok) {
+        fetchDoctors();
+        setStatus({ type: 'success', message: 'Doctor PIN reset successfully' });
+        setResettingPinId(null);
+        setResetPinValue('');
+      } else {
+        let data;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { error: `Server returned an invalid response (${response.status}).` };
+        }
+        setStatus({ type: 'error', message: data.error || 'Failed to reset PIN' });
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Network error' });
+    }
+  };
 
   const fetchRecords = async () => {
     try {
@@ -157,12 +263,21 @@ export default function App() {
           body: formData,
         });
         
+        if (response.status === 413) {
+          throw new Error('File too large. Maximum upload size is 1MB.');
+        }
+
         let data;
         try {
           const text = await response.text();
-          data = JSON.parse(text);
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            console.error('Invalid JSON response:', text);
+            throw new Error(`Server returned an invalid response (${response.status}). The file might be too large or the server is restarting. Please try again.`);
+          }
         } catch (e) {
-          throw new Error('Server returned an invalid response. Please try again.');
+          throw e;
         }
 
         if (data.success) {
@@ -237,12 +352,16 @@ export default function App() {
           setStatus({ type: 'success', message: 'Decryption successful' });
         }
       } else {
+        if (response.status === 413) {
+          setStatus({ type: 'error', message: 'File too large. Maximum upload size is 1MB.' });
+          return;
+        }
         let data;
         try {
           const text = await response.text();
           data = JSON.parse(text);
         } catch (e) {
-          data = { error: 'Server returned an invalid response.' };
+          data = { error: `Server returned an invalid response (${response.status}). The file might be too large or the server is restarting.` };
         }
         setStatus({ type: 'error', message: data.error || 'Decryption failed' });
       }
@@ -281,12 +400,16 @@ export default function App() {
         };
         reader.readAsDataURL(blob);
       } else {
+        if (response.status === 413) {
+          setStatus({ type: 'error', message: 'File too large. Maximum upload size is 1MB.' });
+          return;
+        }
         let data;
         try {
           const text = await response.text();
           data = JSON.parse(text);
         } catch (e) {
-          data = { error: 'Server returned an invalid response.' };
+          data = { error: `Server returned an invalid response (${response.status}). The file might be too large or the server is restarting.` };
         }
         setStatus({ type: 'error', message: data.error || 'Emergency access failed' });
       }
@@ -308,7 +431,7 @@ export default function App() {
         
         <div className="flex items-center gap-6">
           <div className="flex flex-wrap gap-1 bg-gray-100 p-1 border border-[#141414] max-w-[400px] justify-end">
-            {MOCK_USERS.map(user => (
+            {users.map(user => (
               <button
                 key={user.id}
                 onClick={() => setCurrentUser(user)}
@@ -438,48 +561,171 @@ export default function App() {
               </button>
             </section>
           ) : currentUser.role === 'admin' ? (
-            <section className="bg-white border border-[#141414] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xs font-mono uppercase opacity-50 tracking-widest flex items-center gap-2">
-                  <Activity className="w-4 h-4" /> Admin Access Logs
-                </h2>
-                <button 
-                  onClick={() => setShowLogs(!showLogs)}
-                  className="text-[10px] font-mono uppercase underline"
-                >
-                  {showLogs ? 'Hide Logs' : 'Show Logs'}
-                </button>
-              </div>
-
-              {showLogs && (
-                <div className="space-y-4 max-h-[400px] overflow-auto pr-2">
-                  {accessLogs.length === 0 ? (
-                    <div className="text-center py-8 opacity-30 italic text-xs">No access logs found.</div>
-                  ) : (
-                    accessLogs.map((log, i) => (
-                      <div key={i} className="p-3 bg-red-50 border border-red-100 text-[10px] font-mono">
-                        <div className="flex justify-between mb-1">
-                          <span className="font-bold text-red-800">{log.type}</span>
-                          <span className="opacity-50">{log.timestamp}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          <div><span className="opacity-50">Admin:</span> {log.adminId}</div>
-                          <div><span className="opacity-50">Patient:</span> {log.patientName}</div>
-                        </div>
-                        <div className="mt-2 pt-2 border-t border-red-200">
-                          <span className="opacity-50 italic">Reason: {log.reason}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
+            <div className="space-y-6">
+              <section className="bg-white border border-[#141414] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xs font-mono uppercase opacity-50 tracking-widest flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Admin Access Logs
+                  </h2>
+                  <button 
+                    onClick={() => setShowLogs(!showLogs)}
+                    className="text-[10px] font-mono uppercase underline"
+                  >
+                    {showLogs ? 'Hide Logs' : 'Show Logs'}
+                  </button>
                 </div>
-              )}
 
-              <div className="mt-6 p-4 bg-red-500/10 border border-red-500/30 text-red-600 text-[10px] font-mono leading-relaxed">
-                <AlertCircle className="w-4 h-4 mb-2" />
-                WARNING: EMERGENCY OVERRIDE BYPASSES BIOMETRIC VERIFICATION. ALL ACTIONS ARE PERMANENTLY LOGGED ON THE AUDIT TRAIL.
-              </div>
-            </section>
+                {showLogs && (
+                  <div className="space-y-4 max-h-[400px] overflow-auto pr-2">
+                    {accessLogs.length === 0 ? (
+                      <div className="text-center py-8 opacity-30 italic text-xs">No access logs found.</div>
+                    ) : (
+                      accessLogs.map((log, i) => (
+                        <div key={i} className="p-3 bg-red-50 border border-red-100 text-[10px] font-mono">
+                          <div className="flex justify-between mb-1">
+                            <span className="font-bold text-red-800">{log.type}</span>
+                            <span className="opacity-50">{log.timestamp}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div><span className="opacity-50">Admin:</span> {log.adminId}</div>
+                            <div><span className="opacity-50">Patient:</span> {log.patientName}</div>
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-red-200">
+                            <span className="opacity-50 italic">Reason: {log.reason}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-6 p-4 bg-red-500/10 border border-red-500/30 text-red-600 text-[10px] font-mono leading-relaxed">
+                  <AlertCircle className="w-4 h-4 mb-2" />
+                  WARNING: EMERGENCY OVERRIDE BYPASSES BIOMETRIC VERIFICATION. ALL ACTIONS ARE PERMANENTLY LOGGED ON THE AUDIT TRAIL.
+                </div>
+              </section>
+
+              <section className="bg-white border border-[#141414] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xs font-mono uppercase opacity-50 tracking-widest flex items-center gap-2">
+                    <Database className="w-4 h-4" /> Doctor Management
+                  </h2>
+                  <button 
+                    onClick={() => setShowDoctorManagement(!showDoctorManagement)}
+                    className="text-[10px] font-mono uppercase underline"
+                  >
+                    {showDoctorManagement ? 'Hide Management' : 'Manage Doctors'}
+                  </button>
+                </div>
+
+                {showDoctorManagement && (
+                  <div className="space-y-6">
+                    <form onSubmit={handleAddDoctor} className="flex gap-4 items-end">
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-mono uppercase opacity-50 mb-2">Doctor Name</label>
+                        <input 
+                          type="text" 
+                          value={newDoctorName}
+                          onChange={e => setNewDoctorName(e.target.value)}
+                          className="w-full bg-transparent border-b border-[#141414] p-2 text-sm font-mono focus:outline-none focus:border-b-2"
+                          placeholder="Dr. Jane Smith"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-mono uppercase opacity-50 mb-2">Authorization PIN</label>
+                        <input 
+                          type="password" 
+                          value={newDoctorPin}
+                          onChange={e => setNewDoctorPin(e.target.value)}
+                          className="w-full bg-transparent border-b border-[#141414] p-2 text-sm font-mono focus:outline-none focus:border-b-2"
+                          placeholder="6-digit PIN"
+                        />
+                      </div>
+                      <button 
+                        type="submit"
+                        disabled={!newDoctorName || !newDoctorPin}
+                        className="px-6 py-2 bg-[#141414] text-[#E4E3E0] text-[10px] font-mono uppercase hover:bg-opacity-90 disabled:opacity-30"
+                      >
+                        Add Doctor
+                      </button>
+                    </form>
+
+                    <div className="border border-[#141414]">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-[#141414] bg-gray-50 text-[10px] font-mono uppercase opacity-50">
+                            <th className="p-3 font-normal">ID</th>
+                            <th className="p-3 font-normal">Name</th>
+                            <th className="p-3 font-normal">Added At</th>
+                            <th className="p-3 font-normal text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {doctorsList.map(doc => (
+                            <tr key={doc.id} className="border-b border-[#141414] text-xs font-mono">
+                              <td className="p-3">{doc.id}</td>
+                              <td className="p-3">{doc.name}</td>
+                              <td className="p-3 opacity-50">{doc.addedAt}</td>
+                              <td className="p-3 text-right space-x-4">
+                                {resettingPinId === doc.id ? (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <input
+                                      type="password"
+                                      value={resetPinValue}
+                                      onChange={(e) => setResetPinValue(e.target.value)}
+                                      placeholder="New PIN"
+                                      className="w-24 p-1 border border-[#141414] text-xs font-mono"
+                                    />
+                                    <button
+                                      onClick={() => handleResetPin(doc.id, resetPinValue)}
+                                      className="text-emerald-600 hover:underline"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setResettingPinId(null);
+                                        setResetPinValue('');
+                                      }}
+                                      className="text-gray-500 hover:underline"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setResettingPinId(doc.id);
+                                        setResetPinValue('');
+                                      }}
+                                      className="text-blue-600 hover:underline"
+                                    >
+                                      Reset PIN
+                                    </button>
+                                    <button
+                                      onClick={() => handleRemoveDoctor(doc.id)}
+                                      className="text-red-600 hover:underline"
+                                    >
+                                      Remove
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {doctorsList.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="p-6 text-center opacity-50 text-xs italic">No doctors found.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
           ) : (
             <section className="bg-white border border-[#141414] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
               <h2 className="text-xs font-mono uppercase opacity-50 mb-6 tracking-widest flex items-center gap-2">
@@ -502,12 +748,23 @@ export default function App() {
                     />
                   </div>
                   <button 
-                    onClick={() => {
-                      if (doctorPin === '123456') {
-                        setIsDoctorVerified(true);
-                        setStatus({ type: 'success', message: 'Doctor identity verified' });
-                      } else {
-                        setStatus({ type: 'error', message: 'Invalid License PIN' });
+                    onClick={async () => {
+                      try {
+                        setStatus({ type: 'info', message: 'Verifying credentials...' });
+                        const response = await fetch('/api/verify-doctor', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ userId: currentUser.id, pin: doctorPin })
+                        });
+                        const data = await response.json();
+                        if (response.ok && data.success) {
+                          setIsDoctorVerified(true);
+                          setStatus({ type: 'success', message: 'Doctor identity verified' });
+                        } else {
+                          setStatus({ type: 'error', message: data.error || 'Invalid License PIN' });
+                        }
+                      } catch (error) {
+                        setStatus({ type: 'error', message: 'Verification failed' });
                       }
                     }}
                     className="w-full py-4 bg-[#141414] text-white font-bold uppercase text-xs tracking-widest hover:bg-opacity-90 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]"
