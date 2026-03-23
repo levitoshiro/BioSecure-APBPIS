@@ -1,0 +1,7 @@
+{
+  "name": "BioSecure Medical Vault",
+  "description": "Blockchain-enabled secure medical imaging with biometric encryption and IPFS storage.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
