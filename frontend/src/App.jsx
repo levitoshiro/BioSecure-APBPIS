@@ -142,14 +142,13 @@ export default function App() {
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden min-w-[1024px]">
       
-      {/* DESKTOP PERMANENT SIDEBAR */}
       <aside className="w-72 bg-slate-900 text-white flex flex-col shadow-2xl z-20 flex-shrink-0 relative">
         <div className="p-8 flex items-center gap-4 border-b border-slate-800 shrink-0 bg-slate-900/90 backdrop-blur-md">
           <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-3 rounded-xl shadow-lg shadow-blue-500/20">
             <Shield className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white leading-tight">APBIS</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white leading-tight">BioSecure</h1>
             <p className="text-xs font-bold tracking-widest text-slate-400 uppercase mt-0.5">Global Node</p>
           </div>
         </div>
@@ -182,10 +181,8 @@ export default function App() {
         </nav>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto relative w-full bg-slate-50/50">
         
-        {/* DESKTOP TOP BAR (Fixed logic for titles and icons) */}
         <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200 px-10 py-5 flex justify-between items-center sticky top-0 z-30 shadow-sm">
           <div className="flex items-center gap-5">
             <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 shadow-inner shrink-0">
@@ -199,7 +196,7 @@ export default function App() {
                 <span>{activeUser.id}</span>
                 <span className="text-slate-300">|</span>
                 <span className="font-semibold tracking-wide">
-                  {activeRole === 'doctor' ? (activeUser.specialty || 'PHYSICIAN').toUpperCase() : activeRole.toUpperCase()}
+                  {activeRole === 'doctor' ? (activeUser.specialty || INITIAL_NETWORK_USERS.find(u => u.id === activeUser.id)?.specialty || 'PHYSICIAN').toUpperCase() : activeRole.toUpperCase()}
                 </span>
               </div>
             </div>
@@ -362,6 +359,12 @@ function PatientView({ user, records, onAddRecords, onSecurityAlert, walletAccou
 
   useEffect(() => { ctScansRef.current = ctScans; }, [ctScans]);
 
+  // FALLBACK FIX: Merge with default INITIAL_NETWORK_USERS if fetched state lacks attributes
+  const defaultProfile = INITIAL_NETWORK_USERS.find(u => u.id === user.id) || {};
+  const displayDob = user.dob || defaultProfile.dob || 'Unknown';
+  const displayBlood = user.bloodType || defaultProfile.bloodType || 'N/A';
+  const displayAllergies = user.allergies || defaultProfile.allergies || 'None';
+
   const handleSingleFile = (e, setUrl, setFileObj) => {
     const file = e.target.files?.[0];
     if (file) { 
@@ -434,9 +437,9 @@ function PatientView({ user, records, onAddRecords, onSecurityAlert, walletAccou
           <h2 className="text-4xl font-bold text-slate-900 tracking-tight">{user.name}</h2>
           <p className="text-slate-500 font-mono text-base mt-2">{user.id} • Registered Patient</p>
           <div className="flex flex-row flex-wrap justify-start gap-6 mt-6 pt-6 border-t border-slate-100 w-full">
-            <div className="flex items-center gap-3 bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 w-auto"><Calendar className="w-5 h-5 text-slate-400"/><span className="text-base text-slate-700">DOB: <strong>{user.dob || 'Unknown'}</strong></span></div>
-            <div className="flex items-center gap-3 bg-red-50 px-5 py-2.5 rounded-xl border border-red-100 w-auto"><Droplet className="w-5 h-5 text-red-400"/><span className="text-base text-red-900">Blood: <strong>{user.bloodType || 'N/A'}</strong></span></div>
-            <div className="flex items-center gap-3 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-100 w-auto"><Activity className="w-5 h-5 text-emerald-500"/><span className="text-base text-emerald-900">Allergies: <strong className="text-emerald-700">{user.allergies || 'None'}</strong></span></div>
+            <div className="flex items-center gap-3 bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 w-auto"><Calendar className="w-5 h-5 text-slate-400"/><span className="text-base text-slate-700">DOB: <strong>{displayDob}</strong></span></div>
+            <div className="flex items-center gap-3 bg-red-50 px-5 py-2.5 rounded-xl border border-red-100 w-auto"><Droplet className="w-5 h-5 text-red-400"/><span className="text-base text-red-900">Blood: <strong>{displayBlood}</strong></span></div>
+            <div className="flex items-center gap-3 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-100 w-auto"><Activity className="w-5 h-5 text-emerald-500"/><span className="text-base text-emerald-900">Allergies: <strong className="text-emerald-700">{displayAllergies}</strong></span></div>
           </div>
         </div>
       </div>
@@ -576,6 +579,16 @@ function DoctorView({ user, records, networkUsers, onSecurityAlert, showToast })
 
   const patientRecords = activePatientId ? records.filter(r => r.patientId === activePatientId) : [];
   const patientDetails = activePatientId ? networkUsers.find(u => u.id === activePatientId) : null;
+  
+  // FALLBACK FIX: Merge with default INITIAL_NETWORK_USERS if fetched state lacks attributes
+  const defaultDocProfile = INITIAL_NETWORK_USERS.find(u => u.id === user.id) || {};
+  const displayDegree = user.degree || defaultDocProfile.degree || 'MD';
+  const displaySpecialty = user.specialty || defaultDocProfile.specialty || 'General Practice';
+
+  const defaultPatientProfile = INITIAL_NETWORK_USERS.find(u => u.id === activePatientId) || {};
+  const displayDob = patientDetails?.dob || defaultPatientProfile.dob || 'Unknown';
+  const displayBlood = patientDetails?.bloodType || defaultPatientProfile.bloodType || 'N/A';
+  const displayAllergies = patientDetails?.allergies || defaultPatientProfile.allergies || 'None';
 
   if (validatingRecord) {
     return <BiometricValidation title="Patient Handshake Required" subtitle={`Accessing secured record for ${validatingRecord.patientId}. The patient must provide live biometrics.`} record={validatingRecord} onCancel={() => setValidatingRecord(null)} onSecurityAlert={onSecurityAlert} activeUserId={user.id} showToast={showToast} />;
@@ -583,9 +596,20 @@ function DoctorView({ user, records, networkUsers, onSecurityAlert, showToast })
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12 w-full">
-      <div className="mb-10 text-left">
-        <h2 className="text-4xl font-bold text-slate-900 tracking-tight">Dr. {user.name.replace('Dr. ', '')} Workspace</h2>
-        <p className="text-slate-500 mt-2 text-lg">Access permanent Electronic Health Records (EHR) via the decentralized ledger.</p>
+      
+      {/* DOCTOR PROFILE CARD */}
+      <div className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-200 mb-12 flex flex-row items-center gap-8 transition-shadow hover:shadow-md">
+        <div className="w-28 h-28 bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-600 rounded-[2rem] flex items-center justify-center border border-emerald-200 shrink-0 shadow-inner">
+          <Stethoscope size={48} />
+        </div>
+        <div className="flex-1 w-full">
+          <h2 className="text-4xl font-bold text-slate-900 tracking-tight">{user.name} Workspace</h2>
+          <p className="text-slate-500 font-mono text-base mt-2">{user.id} • Authorized Physician</p>
+          <div className="flex flex-row flex-wrap justify-start gap-6 mt-6 pt-6 border-t border-slate-100 w-full">
+            <div className="flex items-center gap-3 bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 w-auto"><FileText className="w-5 h-5 text-slate-400"/><span className="text-base text-slate-700">Credentials: <strong>{displayDegree}</strong></span></div>
+            <div className="flex items-center gap-3 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-100 w-auto"><Activity className="w-5 h-5 text-emerald-500"/><span className="text-base text-emerald-900">Department: <strong>{displaySpecialty}</strong></span></div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 mb-12 flex flex-row gap-4 max-w-4xl transition-shadow hover:shadow-md">
@@ -605,6 +629,7 @@ function DoctorView({ user, records, networkUsers, onSecurityAlert, showToast })
       {activePatientId && patientDetails && (
         <div className="animate-in slide-in-from-bottom-4 w-full">
           
+          {/* PATIENT DOSSIER CARD */}
           <div className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-200 mb-12 flex flex-row items-start gap-8 transition-all hover:shadow-md w-full">
             <div className="w-28 h-28 bg-slate-50 text-slate-400 rounded-[2rem] flex items-center justify-center border border-slate-200 shrink-0 shadow-inner">
               <User className="w-12 h-12" />
@@ -615,9 +640,9 @@ function DoctorView({ user, records, networkUsers, onSecurityAlert, showToast })
                 <span className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl font-mono text-sm font-bold border border-blue-100 tracking-wide">{activePatientId}</span>
               </div>
               <div className="flex flex-row flex-wrap justify-start gap-8 mt-6 pt-6 border-t border-slate-100 w-full">
-                <div className="flex items-center justify-start gap-3 bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 w-auto"><Calendar className="w-5 h-5 text-slate-400"/><span className="text-base text-slate-700">DOB: <strong>{patientDetails.dob || 'Unknown'}</strong></span></div>
-                <div className="flex items-center justify-start gap-3 bg-red-50 px-5 py-2.5 rounded-xl border border-red-100 w-auto"><Droplet className="w-5 h-5 text-red-400"/><span className="text-base text-slate-800">Blood: <strong>{patientDetails.bloodType || 'N/A'}</strong></span></div>
-                <div className="flex items-center justify-start gap-3 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-100 w-auto"><Activity className="w-5 h-5 text-emerald-500"/><span className="text-base text-slate-800">Allergies: <strong className="text-red-600">{patientDetails.allergies || 'None'}</strong></span></div>
+                <div className="flex items-center justify-start gap-3 bg-slate-50 px-5 py-2.5 rounded-xl border border-slate-100 w-auto"><Calendar className="w-5 h-5 text-slate-400"/><span className="text-base text-slate-700">DOB: <strong>{displayDob}</strong></span></div>
+                <div className="flex items-center justify-start gap-3 bg-red-50 px-5 py-2.5 rounded-xl border border-red-100 w-auto"><Droplet className="w-5 h-5 text-red-400"/><span className="text-base text-slate-800">Blood: <strong>{displayBlood}</strong></span></div>
+                <div className="flex items-center justify-start gap-3 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-100 w-auto"><Activity className="w-5 h-5 text-emerald-500"/><span className="text-base text-slate-800">Allergies: <strong className="text-red-600">{displayAllergies}</strong></span></div>
               </div>
             </div>
           </div>
@@ -783,6 +808,7 @@ function AdminView({ networkUsers, onAddUser, onRemoveUser, logs, setLogs, onWip
   const [provRole, setProvRole] = useState("patient");
   const [provPasscode, setProvPasscode] = useState("");
   
+  // DYNAMIC PROFILE FIELDS
   const [provDob, setProvDob] = useState("");
   const [provBlood, setProvBlood] = useState("O+");
   const [provAllergies, setProvAllergies] = useState("");
@@ -823,6 +849,7 @@ function AdminView({ networkUsers, onAddUser, onRemoveUser, logs, setLogs, onWip
     onAddUser(newUser);
     setLogs(prev => [...prev, `[SYSTEM] ${new Date().toLocaleTimeString()} - Provisioned new ${provRole} identity: ${newId}`].slice(-15));
     
+    // Reset Form
     setProvName(""); setProvPasscode(""); setProvDob(""); setProvAllergies(""); setProvDegree(""); setProvSpecialty("");
   };
 
@@ -897,6 +924,7 @@ function AdminView({ networkUsers, onAddUser, onRemoveUser, logs, setLogs, onWip
               </select>
             </div>
 
+            {/* DYNAMIC FIELDS BASED ON ROLE */}
             {provRole === 'patient' ? (
               <div className="flex flex-row gap-4 animate-in fade-in slide-in-from-top-2">
                 <input type="date" value={provDob} onChange={e => setProvDob(e.target.value)} className="flex-1 px-5 py-4 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-slate-50 focus:bg-white text-base transition-all outline-none text-slate-500" />
@@ -965,6 +993,7 @@ function AdminView({ networkUsers, onAddUser, onRemoveUser, logs, setLogs, onWip
               <input type="text" placeholder="New Doctor ID (e.g. DR-5555)" value={bgDoctor} onChange={e => setBgDoctor(e.target.value.toUpperCase())} className="flex-1 px-6 py-4 rounded-2xl border border-red-200 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 bg-white font-mono text-base uppercase transition-all outline-none" />
             </div>
             
+            {/* NEW DOCTOR EXTRA FIELDS */}
             {bgDoctor && !doctorExists && (
                <div className="bg-red-50 p-6 rounded-2xl border border-red-200 mt-2 mb-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
                   <p className="text-sm font-bold text-red-800 uppercase mb-4 flex items-center gap-2 tracking-widest"><Terminal className="w-4 h-4"/> Emergency Provisioning</p>
@@ -1001,7 +1030,7 @@ function AdminView({ networkUsers, onAddUser, onRemoveUser, logs, setLogs, onWip
       {/* CUSTOM DELETION CONFIRMATION MODAL */}
       {userToRevoke && (
         <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-12 animate-in fade-in">
-           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-slate-200 p-10 text-center relative">
+           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-slate-200 p-10 text-center relative">
               <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-100 shadow-inner">
                 <UserMinus className="w-12 h-12 text-red-500" />
               </div>
