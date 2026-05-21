@@ -148,7 +148,7 @@ export default function App() {
             <Shield className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white leading-tight">BioSecure</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white leading-tight">B-DHS</h1>
             <p className="text-xs font-bold tracking-widest text-slate-400 uppercase mt-0.5">Global Node</p>
           </div>
         </div>
@@ -747,6 +747,12 @@ function BiometricValidation({ title, subtitle, record, onCancel, onSecurityAler
            <p className="text-base text-emerald-800 font-bold flex items-center gap-3"><Shield className="w-6 h-6 text-emerald-500"/> Data integrity verified via Blake3 checksum.</p>
            <a href={record.scanUrl} download={record.name} className="flex items-center justify-center gap-2 bg-white border border-slate-200 shadow-sm px-8 py-3 rounded-xl text-blue-600 hover:text-blue-700 font-bold text-base transition-all hover:border-blue-300 active:scale-95"><Download className="w-5 h-5"/> Download File</a>
         </div>
+        <AIReportDashboard 
+           record={record} 
+           patient={INITIAL_NETWORK_USERS.find(u => u.id === record.patientId) || {name: "Unknown", dob: "Unknown", id: record.patientId}} 
+           doctorId={activeUserId} 
+           showToast={showToast} 
+        />
       </div>
     );
   }
@@ -1120,6 +1126,130 @@ function TimelineItem({ step, current, title, desc }) {
       <div className={`w-[calc(100%-4rem)] p-8 rounded-[2rem] border transition-all duration-300 ${isActive ? 'bg-blue-50/50 border-blue-200 shadow-sm scale-[1.02]' : isPending ? 'bg-transparent border-transparent opacity-40' : 'bg-white border-slate-200 shadow-sm'}`}>
         <h4 className={`font-bold text-lg ${isActive ? 'text-blue-900' : 'text-slate-800'}`}>{title}</h4>
         <p className="text-slate-500 text-sm mt-2 leading-relaxed">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 4. ENTERPRISE AI REPORTING DASHBOARD (HACKATHON FEATURE)
+// ==========================================
+function AIReportDashboard({ record, patient, doctorId, showToast }) {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiReport, setAiReport] = useState(null);
+  const [selectedLanguage, setSelectedLanguage] = useState("English");
+
+  const generateReport = async () => {
+    setIsGenerating(true);
+    showToast("Initializing Gemini AI Analysis...", "info");
+    
+    try {
+      // Sending data to your backend which calls Gemini
+      const response = await axios.post(`${API_URL}/api/generate-enterprise-report`, {
+        physicianId: doctorId,
+        patientId: patient.id,
+        rawClinicalData: "Patient exhibits signs of pulmonary consolidation in upper left lobe.",
+        expectedHash: record.txHash // Used for Blockchain verification
+      });
+
+      if (response.data.success) {
+        setAiReport(response.data.data);
+        showToast("AI Enterprise Report Generated Successfully", "success");
+      }
+    } catch (error) {
+      console.error("AI Generation Failed:", error);
+      showToast("Backend connection failed.", "error");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  if (!aiReport) {
+    return (
+      <div className="mt-10 bg-gradient-to-br from-indigo-50 to-blue-50 p-10 rounded-[2rem] border border-indigo-100 flex flex-col items-center justify-center text-center shadow-inner">
+        <Activity className="w-10 h-10 text-indigo-600 mb-6" />
+        <h3 className="text-2xl font-bold text-slate-800 mb-3">Enterprise AI Diagnostics</h3>
+        <p className="text-slate-500 max-w-lg mb-8">Utilize Gemini 1.5 Flash to automatically generate billing codes and localized patient summaries.</p>
+        <button 
+          onClick={generateReport}
+          disabled={isGenerating}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-xl text-lg font-bold transition-all shadow-lg active:scale-95 flex items-center gap-3"
+        >
+          {isGenerating ? <><Loader2 className="w-6 h-6 animate-spin"/> Processing...</> : <><FileText className="w-6 h-6"/> Generate Automated Report</>}
+        </button>
+      </div>
+    );
+  }
+
+  // Helper to get correct summary based on dropdown
+  const getSummary = () => {
+    // Safety check in case aiReport is missing translation keys
+    if (!aiReport) return "";
+    
+    if (selectedLanguage === "Tamil") {
+        return aiReport.patientSummaryTamil || "தமிழ் மொழிபெயர்ப்பு உருவாக்கப்படவில்லை. (Translation not generated)";
+    } else if (selectedLanguage === "Hindi") {
+        return aiReport.patientSummaryHindi || "हिंदी अनुवाद उत्पन्न नहीं हुआ। (Translation not generated)";
+    } else {
+        return aiReport.patientSummaryEnglish;
+    }
+  };
+
+  return (
+    <div className="mt-10 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center gap-3 mb-6 px-2">
+        <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl"><Activity className="w-6 h-6" /></div>
+        <h3 className="text-2xl font-bold text-slate-900">AI Diagnostic Report</h3>
+        <span className="ml-auto bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+          <CheckCircle className="w-3 h-3"/> Logged to Compliance Ledger
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col h-full">
+          <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-100 pb-4">
+            <Stethoscope className="w-4 h-4"/> Physician View
+          </h4>
+          <div className="space-y-6 flex-1">
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase mb-1">Primary Diagnosis</p>
+              <p className="text-xl font-bold text-slate-800">{aiReport.primaryDiagnosis}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase mb-2">ICD-10 Billing Codes</p>
+              <div className="flex flex-wrap gap-2">
+                {aiReport.icd10Codes.map((code, i) => (
+                  <span key={i} className="bg-slate-50 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-mono font-bold">
+                    {code}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[2rem] border border-slate-700 shadow-xl flex flex-col h-full text-white">
+          <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <User className="w-4 h-4"/> Patient Summary
+            </h4>
+            <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-600">
+              <span className="text-xs text-slate-300">Translate:</span>
+              <select 
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value)}
+                className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer"
+              >
+                <option value="English">English</option>
+                <option value="Tamil">தமிழ் (Tamil)</option>
+                <option value="Hindi">हिंदी (Hindi)</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col justify-center">
+             <p className="text-lg leading-relaxed text-slate-200 font-medium">{getSummary()}</p>
+          </div>
+        </div>
       </div>
     </div>
   );
