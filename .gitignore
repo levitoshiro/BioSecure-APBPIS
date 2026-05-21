@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python
 venv/
 env/
@@ -7,3 +8,13 @@ __pycache__/
 # Node
 node_modules/
 .env
+=======
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+>>>>>>> 285c16aa670ffa4da98b38070ece0772c1eefcec

@@ -1,0 +1,349 @@
+import express, { Request, Response } from 'express';
+import { createServer as createViteServer } from 'vite';
+import path from 'path';
+import multer from 'multer';
+import fs from 'fs';
+import { HyperchaoticSystem } from './src/services/encryption.js';
+import crypto from 'crypto';
+import { Blockchain } from './src/services/blockchain.js';
+
+interface MulterRequest extends Request {
+  file?: Express.Multer.File;
+}
+
+// Note: In a real environment, you'd use 'kubo-rpc-client' for IPFS
+// and 'ethers' for Blockchain. We have added a custom Local Blockchain to handle real blockchain transactions in memory.
+
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+const localBlockchain = new Blockchain();
+
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // Mock Database for records and logs
+  const recordsDb: any[] = [];
+  const accessLogs: any[] = [];
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+  const doctorsDb: any[] = [
+    { id: 'd1', name: 'Dr. Smith', pin: '123456', addedAt: new Date().toLocaleString(), pinExpiry: Date.now() + THIRTY_DAYS },
+    { id: 'd2', name: 'Dr. Wong', pin: '123456', addedAt: new Date().toLocaleString(), pinExpiry: Date.now() + THIRTY_DAYS }
+  ];
+
+  app.use(express.json());
+
+  // API Routes
+  app.get('/api/doctors', (req: Request, res: Response) => {
+    const { role } = req.query;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    res.json(doctorsDb);
+  });
+
+  app.post('/api/doctors', (req: Request, res: Response) => {
+    const { role, name, pin } = req.body;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    if (!name || !pin) return res.status(400).json({ error: 'Name and PIN required' });
+    
+    const newDoctor = {
+      id: 'd' + Math.random().toString(36).substr(2, 9),
+      name,
+      pin,
+      addedAt: new Date().toLocaleString(),
+      pinExpiry: Date.now() + THIRTY_DAYS
+    };
+    doctorsDb.push(newDoctor);
+    res.json({ success: true, doctor: newDoctor });
+  });
+
+  app.delete('/api/doctors/:id', (req: Request, res: Response) => {
+    const { role } = req.query;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    
+    const index = doctorsDb.findIndex(d => d.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: 'Doctor not found' });
+    
+    doctorsDb.splice(index, 1);
+    res.json({ success: true });
+  });
+
+  app.post('/api/doctors/:id/reset-pin', (req: Request, res: Response) => {
+    const { role, newPin } = req.body;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    if (!newPin) return res.status(400).json({ error: 'New PIN required' });
+    
+    const doctor = doctorsDb.find(d => d.id === req.params.id);
+    if (!doctor) return res.status(404).json({ error: 'Doctor not found' });
+    
+    doctor.pin = newPin;
+    doctor.pinExpiry = Date.now() + THIRTY_DAYS;
+    res.json({ success: true, doctor });
+  });
+
+  app.post('/api/verify-doctor', (req: Request, res: Response) => {
+    const { userId, pin } = req.body;
+    if (!userId || !pin) return res.status(400).json({ error: 'User ID and PIN required' });
+
+    const doctor = doctorsDb.find(d => d.id === userId);
+    if (!doctor || doctor.pin !== pin) {
+      return res.status(401).json({ error: 'Invalid Doctor Authorization PIN' });
+    }
+    
+    if (Date.now() > doctor.pinExpiry) {
+      return res.status(401).json({ error: 'Doctor PIN has expired. Please contact an administrator to reset it.' });
+    }
+
+    res.json({ success: true });
+  });
+  app.get('/api/records', (req: Request, res: Response) => {
+    const { role, userId } = req.query;
+    if (role === 'admin' || role === 'doctor') {
+      return res.json(recordsDb);
+    }
+    return res.json(recordsDb.filter(r => r.ownerId === userId));
+  });
+
+  app.get('/api/logs', (req: Request, res: Response) => {
+    const { role } = req.query;
+    if (role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+    res.json(accessLogs);
+  });
+
+  app.get('/api/blockchain', (req: Request, res: Response) => {
+    res.json({
+      chain: localBlockchain.chain,
+      isValid: localBlockchain.isChainValid()
+    });
+  });
+
+  app.post('/api/encrypt', upload.fields([
+    { name: 'face', maxCount: 1 },
+    { name: 'iris', maxCount: 1 },
+    { name: 'document', maxCount: 1 }
+  ]), async (req: MulterRequest, res: Response) => {
+    try {
+      const { ownerId, patientName } = req.body;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      if (!files.face || !files.iris || !files.document) {
+        return res.status(400).json({ error: 'Missing required files (face, iris, or document)' });
+      }
+      
+      const faceBuffer = fs.readFileSync(files.face[0].path);
+      const irisBuffer = fs.readFileSync(files.iris[0].path);
+      const combinedHash = crypto.createHash('sha256')
+        .update(faceBuffer)
+        .update(irisBuffer)
+        .digest();
+      
+      const biometricVector = new Float32Array(2048);
+      for(let i=0; i<2048; i++) {
+        biometricVector[i] = (combinedHash[i % combinedHash.length] / 255) * 2 - 1;
+      }
+
+      const systemKey = process.env.SYSTEM_KEY || 'Hospital_Private_Master_Key_2026';
+      
+      const docBuffer = fs.readFileSync(files.document[0].path);
+      const seeds = HyperchaoticSystem.generateSeeds(biometricVector, systemKey);
+      const chaos = new HyperchaoticSystem();
+      const { seqX, seqKey } = chaos.generateKeystream(seeds, docBuffer.length);
+      
+      const encrypted = chaos.encrypt(docBuffer, seqX, seqKey);
+      const hash = crypto.createHash('sha512').update(encrypted).digest('hex');
+      
+      const cid = `Qm${crypto.randomBytes(16).toString('hex')}`;
+      const encryptedPath = `uploads/${cid}.enc`;
+      fs.writeFileSync(encryptedPath, encrypted);
+      
+      const recordId = Math.random().toString(36).substr(2, 9);
+      
+      // Use the Local Blockchain to store the record hash and CID
+      const txHash = localBlockchain.addTransaction({
+        recordId,
+        cid,
+        documentHash: hash,
+        ownerId,
+        patientName,
+        timestamp: Date.now()
+      });
+
+      const newRecord = {
+        id: recordId,
+        name: files.document[0].originalname,
+        cid,
+        hash,
+        txHash,
+        timestamp: new Date().toLocaleString(),
+        ownerId,
+        patientName,
+        seeds // Store seeds for emergency admin access (In real app, this would be encrypted with Admin Master Key)
+      };
+      recordsDb.push(newRecord);
+
+      console.log('Sending successful response for /api/encrypt');
+      res.json({
+        success: true,
+        record: newRecord,
+        biometricKey: combinedHash.toString('hex'),
+        message: 'SVG encrypted using multimodal biometrics'
+      });
+    } catch (error) {
+      console.error('Error in /api/encrypt:', error);
+      res.status(500).json({ error: 'Encryption failed' });
+    }
+  });
+
+  app.post('/api/decrypt', upload.fields([
+    { name: 'face', maxCount: 1 },
+    { name: 'iris', maxCount: 1 }
+  ]), async (req: MulterRequest, res: Response) => {
+    try {
+      const { cid, hash, userId, role, doctorPin } = req.body;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      
+      const record = recordsDb.find(r => r.cid === cid);
+      if (!record) return res.status(404).json({ error: 'Record not found' });
+
+      // Permission check
+      if (role === 'patient' && record.ownerId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized access to this record' });
+      }
+
+      // Additional Doctor Verification
+      if (role === 'doctor') {
+        const doctor = doctorsDb.find(d => d.id === userId);
+        if (!doctor || doctor.pin !== doctorPin) {
+          return res.status(401).json({ error: 'Invalid Doctor Authorization PIN' });
+        }
+        if (Date.now() > doctor.pinExpiry) {
+          return res.status(401).json({ error: 'Doctor PIN has expired. Please contact an administrator to reset it.' });
+        }
+      } else {
+        // Patient verification requires biometric files
+        if (!files.face || !files.iris) {
+          return res.status(400).json({ error: 'Missing biometric files for re-verification' });
+        }
+      }
+
+      const encryptedPath = `uploads/${cid}.enc`;
+      if (!fs.existsSync(encryptedPath)) return res.status(404).json({ error: 'Encrypted file not found' });
+
+      const encrypted = fs.readFileSync(encryptedPath);
+      
+      // Integrity Check
+      const currentHash = crypto.createHash('sha512').update(encrypted).digest('hex');
+      if (currentHash !== hash) {
+        return res.status(403).json({ error: 'Integrity check failed: Data tampering detected' });
+      }
+
+      let finalSeeds = record.seeds;
+
+      // Re-generate Biometric Vector for patients
+      if (role === 'patient') {
+        const faceBuffer = fs.readFileSync(files.face[0].path);
+        const irisBuffer = fs.readFileSync(files.iris[0].path);
+        const combinedHash = crypto.createHash('sha256')
+          .update(faceBuffer)
+          .update(irisBuffer)
+          .digest();
+        
+        const biometricVector = new Float32Array(2048);
+        for(let i=0; i<2048; i++) {
+          biometricVector[i] = (combinedHash[i % combinedHash.length] / 255) * 2 - 1;
+        }
+
+        const systemKey = process.env.SYSTEM_KEY || 'Hospital_Private_Master_Key_2026';
+        const generatedSeeds = HyperchaoticSystem.generateSeeds(biometricVector, systemKey);
+
+        // Biometric Verification: Compare generated seeds with stored seeds
+        const seedsMatch = record.seeds.every((s: number, i: number) => Math.abs(s - generatedSeeds[i]) < 1e-10);
+        if (!seedsMatch) {
+          return res.status(401).json({ error: 'Biometric verification failed: Identity mismatch' });
+        }
+        finalSeeds = generatedSeeds;
+      }
+
+      const chaos = new HyperchaoticSystem();
+      const { seqX, seqKey } = chaos.generateKeystream(finalSeeds, encrypted.length);
+      
+      const decrypted = chaos.decrypt(encrypted, seqX, seqKey);
+      
+      res.send(decrypted);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Decryption failed' });
+    }
+  });
+
+  app.post('/api/emergency-decrypt', async (req: Request, res: Response) => {
+    try {
+      const { cid, adminId, reason } = req.body;
+      const record = recordsDb.find(r => r.cid === cid);
+      if (!record) return res.status(404).json({ error: 'Record not found' });
+
+      // In a real app, verify adminId and role
+      const encryptedPath = `uploads/${cid}.enc`;
+      const encrypted = fs.readFileSync(encryptedPath);
+
+      const chaos = new HyperchaoticSystem();
+      const { seqX, seqKey } = chaos.generateKeystream(record.seeds, encrypted.length);
+      const decrypted = chaos.decrypt(encrypted, seqX, seqKey);
+
+      // Log the emergency access
+      accessLogs.push({
+        timestamp: new Date().toLocaleString(),
+        adminId,
+        patientName: record.patientName,
+        recordId: record.id,
+        reason,
+        type: 'EMERGENCY_OVERRIDE'
+      });
+
+      res.send(decrypted);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Emergency decryption failed' });
+    }
+  });
+
+  // Global error handler to ensure JSON responses for API errors
+  app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
+    console.error('Global error:', err);
+    if (req.path.startsWith('/api/')) {
+      res.status(500).json({ error: err.message || 'Internal Server Error' });
+    } else {
+      next(err);
+    }
+  });
+
+  // 404 handler for API routes
+  app.use('/api', (req: Request, res: Response) => {
+    res.status(404).json({ error: 'API endpoint not found' });
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
