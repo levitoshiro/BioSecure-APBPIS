@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🛡️ BioSecure Framework (Full-Stack Deployment)
 
 **BioSecure** is a zero-trust Electronic Health Record (EHR) management framework. This repository contains the complete, production-ready architecture, integrating a local Ethereum blockchain (Ganache/Hardhat), a Python Flask Global Node (Backend), and a React Web3 interface (Frontend).
@@ -116,16 +115,10 @@ Emergency Override Default
     If the Admin provisions a new emergency doctor via the Break-Glass protocol without assigning a specific password, the system defaults to:
 
     Passphrase: emergency-override-2026
-=======
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
 # Run and deploy your AI Studio app
 
 This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/768609d8-0ecc-467d-8331-5498494516fb
 
 ## Run Locally
 
@@ -137,4 +130,3 @@ View your app in AI Studio: https://ai.studio/apps/768609d8-0ecc-467d-8331-54984
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
->>>>>>> 285c16aa670ffa4da98b38070ece0772c1eefcec
