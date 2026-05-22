@@ -5,7 +5,7 @@ const AIAuditLog = require('../models/AIAuditLog');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
 
-const CONTRACT_ADDRESS = "0x2f145dD6D5b6bA19475957B632eA4375B965b7D9";
+const CONTRACT_ADDRESS = "your-contract-address";
 const ABI = ["function getStoredHash(string memory patientId) public view returns (string memory)"];
 
 const scrubPII = (clinicalText) => {
