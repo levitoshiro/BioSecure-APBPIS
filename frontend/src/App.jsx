@@ -1144,12 +1144,12 @@ function AIReportDashboard({ record, patient, doctorId, showToast }) {
     showToast("Initializing Gemini AI Analysis...", "info");
     
     try {
-      // Sending data to your backend which calls Gemini
-      const response = await axios.post(`${API_URL}/api/generate-enterprise-report`, {
+      // CHANGE THIS LINE TO EXPLICITLY HIT PORT 5001
+      const response = await axios.post(`http://localhost:5001/api/generate-enterprise-report`, {
         physicianId: doctorId,
         patientId: patient.id,
         rawClinicalData: "Patient exhibits signs of pulmonary consolidation in upper left lobe.",
-        expectedHash: record.txHash // Used for Blockchain verification
+        expectedHash: record.txHash 
       });
 
       if (response.data.success) {
@@ -1240,9 +1240,10 @@ function AIReportDashboard({ record, patient, doctorId, showToast }) {
                 onChange={(e) => setSelectedLanguage(e.target.value)}
                 className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer"
               >
-                <option value="English">English</option>
-                <option value="Tamil">தமிழ் (Tamil)</option>
-                <option value="Hindi">हिंदी (Hindi)</option>
+                {/* Highlighted Fix: Added bg-slate-800 to the options below */}
+                <option value="English" className="bg-slate-800">English</option>
+                <option value="Tamil" className="bg-slate-800">தமிழ் (Tamil)</option>
+                <option value="Hindi" className="bg-slate-800">हिंदी (Hindi)</option>
               </select>
             </div>
           </div>
