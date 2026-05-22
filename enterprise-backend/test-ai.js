@@ -3,7 +3,7 @@
 // // Paste your actual AI Studio key here
 // const genAI = new GoogleGenerativeAI("AIzaSyCS-c2fvp-yBvhkR4LQ-C9MwFpDoGyRxMQ"); 
 // test-ai.js - Raw REST API Bypass
-const API_KEY = "AIzaSyCS-c2fvp-yBvhkR4LQ-C9MwFpDoGyRxMQ"; 
+const API_KEY = "your-api-key"; 
 
 async function discoverModels() {
     console.log("🔍 Bypassing the NPM package and asking Google directly...");
