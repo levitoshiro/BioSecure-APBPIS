@@ -1,0 +1,10 @@
+{
+  "name": "biosecure-blockchain",
+  "version": "1.0.0",
+  "description": "Minimal zero-trust medical blockchain setup",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.5",
+    "ethers": "^6.11.1",
+    "hardhat": "^2.22.2"
+  }
+}
